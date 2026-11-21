@@ -1,0 +1,92 @@
+#!/bin/bash
+# postinst - deploy the standalone KWin Wayland input-method bridge.
+# Two details matter:
+#  * KWin 5.27 resolves [Wayland] InputMethod through KService as a .desktop
+#    file. A bare executable path is silently ignored (no IM process spawned),
+#    so we install a desktop descriptor system-wide and point at it.
+#  * We must not clobber a third-party IM (fcitx5/IBus/other) setting. We only
+#    take over InputMethod lines that point at a KNOWN bridge of ours
+#    (uoshim-wayland-im, eglrun-wayland-im, hisi-wayland-im), or set one when
+#    none exists. Any other value is left untouched.
+set -e
+
+PREFIX=/opt/uoshim-wayland-im
+IM_DESKTOP=/usr/share/applications/uoshim-wayland-im.desktop
+CPIS_POLICY=/etc/dbus-1/system.d/com.cpis.uinput.conf
+IM_LINE="InputMethod=$IM_DESKTOP"
+# Known bridges we are allowed to replace (ours + eglrun's historical forms).
+KNOWN_RE='uoshim-wayland-im|eglrun-wayland-im|hisi-wayland-im|eglrun.*wayland-im-shim'
+
+case "${1:-}" in
+  configure|abort-upgrade|abort-remove|abort-deconfigure) ;;
+  *) exit 0 ;;
+esac
+
+install -d -m 755 /usr/share/applications
+# The desktop file is installed by the package payload. Generate a fallback
+# only if it is missing (defensive, e.g. partial/older install).
+if [ ! -f "$IM_DESKTOP" ]; then
+  cat > "$IM_DESKTOP" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=UOShim Wayland Input Method
+Comment=KWin Wayland input-method bridge for UOS fcitx/Sogou (standalone)
+Exec=/opt/uoshim-wayland-im/bin/wayland-im-shim
+NoDisplay=true
+Terminal=false
+DESKTOP
+  chmod 644 "$IM_DESKTOP"
+fi
+
+set_im_in_file() {
+  local f="$1" owner=""
+  [ -f "$f" ] || { printf '[Wayland]\n%s\n' "$IM_LINE" > "$f"; return; }
+  owner="$(stat -c '%u:%g' "$f" 2>/dev/null || true)"
+  if grep -q '^InputMethod=' "$f"; then
+    if grep -qE "^InputMethod=.*($KNOWN_RE)" "$f"; then
+      sed -i "s|^InputMethod=.*|$IM_LINE|" "$f"
+    fi
+    # else: third-party IM -> leave untouched
+  elif grep -q '^\[Wayland\]' "$f"; then
+    sed -i "/^\[Wayland\]/a $IM_LINE" "$f"
+  else
+    printf '\n[Wayland]\n%s\n' "$IM_LINE" >> "$f"
+  fi
+  [ -n "$owner" ] && chown "$owner" "$f" 2>/dev/null || true
+}
+
+install -d -m 755 /etc/xdg
+if [ -f /etc/xdg/kwinrc ]; then
+  cp -f /etc/xdg/kwinrc /etc/xdg/kwinrc.uoshim-bak 2>/dev/null || true
+fi
+set_im_in_file /etc/xdg/kwinrc
+
+# Patch existing users' kwinrc (only known bridges / no setting), preserving
+# a third-party IM verbatim.
+for home in /home/*; do
+  [ -d "$home/.config" ] || continue
+  f="$home/.config/kwinrc"
+  [ -f "$f" ] || continue
+  if grep -q '^InputMethod=' "$f"; then
+    grep -qE "^InputMethod=.*($KNOWN_RE)" "$f" && set_im_in_file "$f"
+  else
+    set_im_in_file "$f"
+  fi
+done
+
+# CPIS uinput DBus policy -- identical pattern to eglrun 1.0.11: keep the
+# policy as a private config under /opt and install it into /etc from here.
+# A payload entry for /etc/dbus-1/system.d/com.cpis.uinput.conf would collide
+# with cpis-base's stale dpkg ownership record, so we never ship it there.
+install -d -m 755 /etc/dbus-1/system.d
+install -m 644 "$PREFIX/config/com.cpis.uinput.conf" "$CPIS_POLICY"
+printf 'uoshim-cpis-policy-generated\n' > /var/lib/uoshim-wayland-im-cpis-policy 2>/dev/null || true
+systemctl reload dbus.service >/dev/null 2>&1 || true
+
+printf 'uoshim-wayland-im 1.2 installed at %s\n' "$PREFIX" > /var/lib/uoshim-wayland-im-installed 2>/dev/null || true
+
+echo
+echo "uoshim-wayland-im installed (standalone KWin Wayland input-method bridge)."
+echo "NOTE: log out and back in ONCE so KWin starts the input-method client."
+echo "Verify with: pgrep -a wayland-im-shim  |  cat /tmp/wayland-im-shim.log"
+echo

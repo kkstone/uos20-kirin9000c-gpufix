@@ -1,0 +1,41 @@
+#!/bin/bash
+# postrm - remove everything this package generated outside its payload.
+# By design we touch ONLY our own uoshim-wayland-im lines and desktop file.
+# We never remove eglrun's bridge or a third-party IM setting.
+set -e
+
+revert_im_in_file() {
+  local f="$1" owner=""
+  [ -f "$f" ] || return 0
+  owner="$(stat -c '%u:%g' "$f" 2>/dev/null || true)"
+  # Only delete lines that point at OUR uoshim desktop/shim.
+  sed -i '\#^InputMethod=.*uoshim-wayland-im\.desktop#d' "$f" 2>/dev/null || true
+  sed -i '\#^InputMethod=.*uoshim-wayland-im.*wayland-im-shim#d' "$f" 2>/dev/null || true
+  # Drop an empty [Wayland] section we may have created (best effort).
+  sed -i '/^\[Wayland\]/{N;/^\[Wayland\]\n$/d}' "$f" 2>/dev/null || true
+  [ -n "$owner" ] && chown "$owner" "$f" 2>/dev/null || true
+}
+
+case "${1:-}" in
+  remove|purge)
+    rm -f /usr/share/applications/uoshim-wayland-im.desktop
+    rm -f /etc/xdg/kwinrc.uoshim-bak
+    rm -f /var/lib/uoshim-wayland-im-installed
+    if [ -f /var/lib/uoshim-wayland-im-cpis-policy ]; then
+      rm -f /etc/dbus-1/system.d/com.cpis.uinput.conf
+      rm -f /var/lib/uoshim-wayland-im-cpis-policy
+      if command -v systemctl >/dev/null 2>&1; then
+        systemctl reload dbus >/dev/null 2>&1 || true
+      fi
+    fi
+
+    revert_im_in_file /etc/xdg/kwinrc
+    for home in /home/*; do
+      [ -f "$home/.config/kwinrc" ] || continue
+      revert_im_in_file "$home/.config/kwinrc"
+    done
+    ;;
+  *) exit 0 ;;
+esac
+
+exit 0

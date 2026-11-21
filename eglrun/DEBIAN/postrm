@@ -1,0 +1,11 @@
+#!/bin/bash
+set -e
+case "${1:-}" in
+  remove|purge)
+    rm -f /usr/local/bin/eglrun
+    rm -f /var/lib/eglrun-installed
+    rm -f /etc/environment.d/99-hisi-gpu-accel.conf
+    ;;
+  *) exit 0 ;;
+esac
+exit 0

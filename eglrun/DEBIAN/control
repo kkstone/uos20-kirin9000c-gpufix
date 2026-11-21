@@ -1,0 +1,11 @@
+Package: eglrun
+Version: 2.0.2
+Section: utils
+Priority: optional
+Architecture: arm64
+Depends: bash, coreutils
+Maintainer: WorkBuddy <workbuddy@localhost>
+Description: GPU launcher for Chrome and Electron on Maleoon 910 (X11+Vulkan, VAAPI)
+ eglrun launches a Chrome or Electron app on HUAWEI Kirin 9000c / Maleoon 910
+ (UOS 20) over X11 with ANGLE-Vulkan and an ICD wrapper for true GPU WebGL2 and
+ dma-buf hardware compositing, plus a VAAPI shim that restores hardware decode.

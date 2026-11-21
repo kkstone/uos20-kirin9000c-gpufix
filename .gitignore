@@ -1,0 +1,7 @@
+*.log
+*.swp
+*~
+__pycache__/
+.DS_Store
+# source-tree AppImage binary (shipped inside the release deb)
+firefox/opt/mozilla-firefox/bin/firefox-bin

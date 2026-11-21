@@ -1,0 +1,19 @@
+#!/bin/bash
+# postinst - register the global eglrun command. No config/IME/DBus side effects.
+set -e
+PREFIX=/opt/eglrun
+case "${1:-}" in
+  configure|abort-upgrade|abort-remove|abort-deconfigure) ;;
+  *) exit 0 ;;
+esac
+
+ln -sfn "$PREFIX/bin/eglrun" /usr/local/bin/eglrun
+
+# Remove stale artifacts of any older installation (pure cleanup).
+rm -f /etc/environment.d/99-hisi-gpu-accel.conf
+printf 'eglrun %s installed at %s\n' "$(cat "$PREFIX/VERSION" 2>/dev/null || echo '?')" "$PREFIX" \
+  > /var/lib/eglrun-installed 2>/dev/null || true
+
+echo "eglrun 2.0.2 installed (X11 + ANGLE-Vulkan GPU launcher for Chrome/Electron + VAAPI)."
+echo "Command: /usr/local/bin/eglrun"
+exit 0

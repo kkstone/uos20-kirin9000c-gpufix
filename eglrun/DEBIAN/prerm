@@ -1,0 +1,7 @@
+#!/bin/bash
+set -e
+case "${1:-}" in
+  remove|upgrade|deconfigure) rm -f /usr/local/bin/eglrun ;;
+  *) exit 0 ;;
+esac
+exit 0

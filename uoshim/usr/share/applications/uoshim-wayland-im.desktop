@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=UOShim Wayland Input Method
+Comment=KWin Wayland input-method bridge for UOS fcitx/Sogou (standalone)
+Exec=/opt/uoshim-wayland-im/bin/wayland-im-shim
+NoDisplay=true
+Terminal=false

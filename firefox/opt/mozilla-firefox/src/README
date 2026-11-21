@@ -1,0 +1,37 @@
+firefox.appimage 1.0 (arm64) — UOS20 / Kirin9000c / Maleoon910
+================================================================
+
+安装（需 root）：
+  sudo dpkg -i firefox.appimage_1.0_arm64.deb
+
+卸载：
+  sudo dpkg -r firefox.appimage
+
+安装后布局（全部 root:root）：
+  /opt/mozilla-firefox/bin/firefox-bin     原厂 Firefox 160.0 AppImage（零字节补丁）
+  /opt/mozilla-firefox/lib/*.so            硬件加速垫片（LD_PRELOAD）
+  /opt/mozilla-firefox/lib/egl-huawei-v12/ 华为 EGL 分流垫片
+  /opt/mozilla-firefox/lib/egl-fbspoof/     gfxtest GL_VERSION 伪装
+  /opt/mozilla-firefox/lib/mesa-egl-glvnd/  GLVND 头
+  /opt/mozilla-firefox/src/                全部垫片源码 + 本启动器源码
+  /usr/local/bin/firefox                   启动器（原装 desktop 的 Exec=firefox 直接命中）
+  /usr/share/applications/firefox.desktop  原厂 desktop（AppImage 内原样）
+  /usr/share/pixmaps/firefox.png           原厂图标
+
+运行方式：
+  点击菜单里的 Firefox，或命令行 `firefox [URL]`
+  profile 在 $HOME/.mozilla/firefox/mozilla-firefox-appimage（首次运行自动创建）
+
+技术要点：
+  - AppImage 原样运行，不解包、不改任何二进制字节。
+  - gfxtest-env-shim.so 在 execve/posix_spawn 边界给 GL 探测子进程 gfxtest
+    注入等价环境（替代 dist 模式的 shell 包装脚本），挂载点原版二进制照跑。
+  - 垫片链：wllog(队列警告过滤) + csd(三按钮) + wheel(滚轮) + gbm-hw(华为GBM桥)
+    + gfxtest-env(探测环境)，另加 egl-huawei-v12(主EGL) + HISI_FF_LIBGFX(UAF副本)。
+  - 沙箱保持关闭（私有 shim/华为设备节点与沙箱不兼容），横幅已用官方 pref + CSS 隐藏。
+
+重编译垫片（源码在 src/）：
+  gcc -shared -fPIC -O2 -o lib/gfxtest_env_shim.so src/gfxtest-env-shim/gfxtest_env_shim.c -ldl
+  # 其余垫片见各自源码目录；egl-huawei-v12 需 EGL 头：
+  # gcc -shared -fPIC -O2 -o lib/egl-huawei-v12/libEGL.so.1 src/egl-huawei-v12/egl_huawei_v12.c \
+  #     -ldl -lpthread -I<路径>/include -DEGL_NO_X11

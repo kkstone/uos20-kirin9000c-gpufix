@@ -1,0 +1,100 @@
+#!/bin/bash
+# eglrun 2.0.2 - GPU-accelerated launcher for Chrome and Electron apps on
+# HUAWEI Kirin 9000c / Maleoon 910 (UOS 20).
+#
+# Usage: eglrun /opt/path/to/app [app-args...]
+#
+# The launcher applies the verified X11 + ANGLE/Vulkan GPU stack and VAAPI
+# video-decode fix, then execs the given app with its own arguments intact.
+#
+# GPU route:
+#   app -> ANGLE(Vulkan) -> libvulkan -> ICD wrapper (lib/icd-wrap.so)
+#       -> libhvgr.so (Maleoon 910) -> VK_KHR_xcb_surface
+#       -> XWayland -> DRI3/Present -> KWin scanout
+#
+# Interception layers (transparent to everything else):
+#   - lib/icd-wrap.so   Vulkan ICD wrapper, via VK_ICD_FILENAMES
+#   - lib/vaapi-shim.so VAAPI video-decode fix, via LD_PRELOAD
+#                       (spoofs vacore's VA-API 1.14 -> 1.17 for Chrome's gate)
+#
+# DISPLAY / XAUTHORITY / DPI / user-data-dir are all taken from the caller's
+# environment or the app's own defaults. A normal launch writes nothing to
+# disk. EGLLRUN_DEBUG=1 keeps the app's stderr for one run (ICD trace:
+# ICD_WRAP_DEBUG; VAAPI trace: VAAPI_SHIM_DEBUG).
+
+set -u
+HERE="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+ICD="$HERE/../lib/maleoon-wrap.json"
+VAAPI_SHIM="$HERE/../lib/vaapi-shim.so"
+
+[ -f "$ICD" ]       || { echo "eglrun: ICD manifest not found: $ICD" >&2; exit 1; }
+[ -f "$VAAPI_SHIM" ] || { echo "eglrun: VAAPI shim not found: $VAAPI_SHIM" >&2; exit 1; }
+
+usage() {
+  cat <<'EOF'
+Usage:
+  eglrun <app-executable> [app-args...]   launch a Chrome/Electron app with GPU acceleration
+  eglrun --chrome <path> [args...]        compatible form (path is the app executable)
+  eglrun --electron <path> [args...]      compatible form (path is the app executable)
+  eglrun --help
+
+Examples:
+  eglrun /opt/google-chrome/chrome
+  eglrun /opt/some-electron-app/app --flag value
+EOF
+}
+
+# --- parse launcher options; the first app token is the executable ----------
+APP=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -h|--help) usage; exit 0 ;;
+    --chrome|--electron)
+      shift
+      [ "$#" -gt 0 ] && { APP="$1"; shift; }
+      break ;;
+    --) shift; break ;;
+    *) APP="$1"; shift; break ;;
+  esac
+done
+
+if [ -z "$APP" ]; then
+  echo "eglrun: no application executable given" >&2
+  usage >&2
+  exit 1
+fi
+# Accept a bare command name as well as a path.
+case "$APP" in
+  /*) ;;
+  *) if command -v "$APP" >/dev/null 2>&1; then APP="$(command -v "$APP")"; fi ;;
+esac
+if [ ! -x "$APP" ]; then
+  echo "eglrun: application not executable: $APP" >&2
+  exit 1
+fi
+APP_ARGS=("$@")
+
+# --- Vulkan ICD wrapper ----------------------------------------------------
+export VK_ICD_FILENAMES="$ICD"
+
+# --- VAAPI video-decode shim ----------------------------------------------
+export LIBVA_DRIVER_NAME="${LIBVA_DRIVER_NAME:-vacore}"
+export LIBVA_DRIVERS_PATH="${LIBVA_DRIVERS_PATH:-/usr/lib}"
+export LIBVA_DRI3_DISABLE=1
+LD_PRELOAD="$VAAPI_SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
+export LD_PRELOAD
+
+# --- minimal verified flag set --------------------------------------------
+VFEATURES="Vulkan,VulkanFromANGLE,DefaultANGLEVulkan,VaapiVideoDecoder,VaapiIgnoreDriverChecks"
+FLAGS=(
+  --ozone-platform=x11
+  --use-gl=angle --use-angle=vulkan
+  --enable-features="$VFEATURES"
+  --enable-gpu-compositing --ignore-gpu-blocklist
+)
+
+if [ "${EGLLRUN_DEBUG:-0}" = "1" ]; then
+  exec "$APP" "${FLAGS[@]}" "${APP_ARGS[@]}"
+else
+  exec "$APP" "${FLAGS[@]}" "${APP_ARGS[@]}" >/dev/null 2>&1
+fi
