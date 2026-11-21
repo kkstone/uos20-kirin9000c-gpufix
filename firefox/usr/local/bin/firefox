@@ -52,6 +52,23 @@ fi
 [ -z "$FF_DPI" ] && FF_DPI="1.0"
 case "$FF_DPI" in ''|*[!0-9.]*) FF_DPI="1.0" ;; esac
 
+# ---- 指针尺寸：每次启动按当前系统 DPI 动态设置（可移植）-------------------
+# 原生 Wayland 下 Firefox 的指针大小读 GTK 标准键
+# org.gnome.desktop.interface cursor-size，而 UOS/DDE 把缩放写在私有键
+# com.deepin.xsettings。重装 / dconf 重置后标准键会回落到 24(1x)，导致界面
+# 已按 FF_DPI 放大、指针却是原始大小。这里每次启动都用上面算好的 FF_DPI
+# 换算并写入标准键（24px × 缩放，四舍五入），换机器/改缩放均自动适配。
+# 注意：gsettings/dconf 属于登录用户，必须以运行 firefox 的用户身份写入。
+if command -v gsettings >/dev/null 2>&1; then
+  _FF_CURSOR=$(awk -v d="$FF_DPI" 'BEGIN{printf "%d", 24*d+0.5}')
+  case "$_FF_CURSOR" in ''|*[!0-9]*) _FF_CURSOR=24 ;; esac
+  _FF_CUR=$(gsettings get org.gnome.desktop.interface cursor-size 2>/dev/null | tr -d 'uint32[:space:]')
+  if [ -n "$_FF_CURSOR" ] && [ "$_FF_CUR" != "$_FF_CURSOR" ]; then
+    gsettings set org.gnome.desktop.interface cursor-size "$_FF_CURSOR" 2>/dev/null || true
+  fi
+  unset _FF_CURSOR _FF_CUR
+fi
+
 # ---- 硬件加速 / UI 偏好：每次启动都注入 -----------------------------------
 # 重要：语言引导由 OS locale + langpack 自动触发，与 user.js 里的 pref 无关；
 # 而 DPI 与沙箱横幅隐藏都在 user.js 里。故 user.js 必须首次也写，

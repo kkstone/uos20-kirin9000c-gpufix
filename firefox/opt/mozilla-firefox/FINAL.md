@@ -11,8 +11,8 @@
 
 | 项 | 值 |
 |---|---|
-| deb 包 | `firefox.appimage_160.0_arm64.deb`（91M） |
-| Package / Version | `firefox.appimage` / `160.0`（与 Firefox 版本对齐） |
+| deb 包 | `firefox.appimage_160.0-2_arm64.deb`（91M） |
+| Package / Version | `firefox.appimage` / `160.0-2`（与 Firefox 版本对齐） |
 | Architecture | `arm64` |
 | Depends | `libc6 (>= 2.28)`, `eglrun` |
 | 启动命令 | `firefox`（原装 desktop 的 `Exec=firefox %u` 命中 `/usr/local/bin/firefox`） |
@@ -79,11 +79,19 @@
 
 ## 6. 已知边界
 
-- 夜间模式、DPI 只在**启动时**读取系统设置；运行中切换需重启 Firefox。
+- 夜间模式、DPI 与指针尺寸只在**启动时**读取系统设置；运行中切换需重启 Firefox。
 - `FF_REPLAY_FIRST_RUN=1` 重放向导时，语言包已装、语言已匹配，语言引导卡片可能不再出现；
   向导其余卡片照常。
 - 垫片中的路径固化在 `/opt/mozilla-firefox`，不可迁移前缀。
 - 未安装 eglrun 时 dpkg 会报依赖缺失；输入法首次需注销重登一次让 KWin 读取配置。
+
+## 7. 垫片与指针缩放实现
+
+- `lib/wheel_shim.so`：自包含实现，无 `wl_*` 外部符号依赖；ABI 与滚轮行为不变。
+  源码 `src/wheel-shim/`（含自带头 `wayland_mini.h`）。
+- `usr/local/bin/firefox` + `src/firefox-launcher.sh`：每次启动按 `FF_DPI` 把光标尺寸
+  （`24×DPI`）写入 GTK 标准键 `cursor-size`，指针与界面缩放一致；`FF_DPI_OVERRIDE`
+  可手动覆盖。逻辑可移植，换机器/改缩放自动适配。
 
 ---
 

@@ -4,12 +4,22 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-/* The Wayland header declares wl_pointer_add_listener() as static inline.
- * Rename that helper while including it so our interposing symbol below can
- * use the real name. */
-#define wl_pointer_add_listener wayland_header_wl_pointer_add_listener
-#include <wayland-client.h>
-#undef wl_pointer_add_listener
+/* Self-contained Wayland definitions (byte-exact ABI replica of the original
+ * Huawei headers). Avoids depending on the trimmed libwayland-dev headers on
+ * UOS20 and removes the undefined wl_proxy_get_interface / wl_pointer_interface
+ * symbols that crashed Firefox at load time after a system reinstall. */
+#include "wayland_mini.h"
+
+/* Local equivalent of wl_proxy_get_interface() - the interface pointer is the
+ * first word of every wl_proxy (stable ABI). No external symbol needed. */
+static const struct wl_interface *wl_proxy_get_interface_local(struct wl_proxy *p) {
+    return p ? p->object.interface : 0;
+}
+/* Local equivalent of the wl_pointer_interface data symbol: compare the
+ * interface name instead of relying on a global symbol export. */
+static int is_wl_pointer_interface(const struct wl_interface *iface) {
+    return iface && iface->name && strcmp(iface->name, "wl_pointer") == 0;
+}
 
 /*
  * wheel_shim.so - make mouse-wheel axis events use Firefox's working
@@ -147,7 +157,7 @@ int wl_proxy_add_listener(struct wl_proxy *proxy, void (**implementation)(void),
         real_add = (proxy_add_listener_t)dlsym(RTLD_NEXT, "wl_proxy_add_listener");
     if (!real_add) return -1;
 
-    if (wl_proxy_get_interface(proxy) != &wl_pointer_interface || !implementation)
+    if (!is_wl_pointer_interface(wl_proxy_get_interface_local(proxy)) || !implementation)
         return real_add(proxy, implementation, data);
 
     const struct wl_pointer_listener *listener =

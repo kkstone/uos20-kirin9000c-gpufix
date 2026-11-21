@@ -6,6 +6,8 @@
 - 原生 Wayland + Firefox 自绘 CSD 三按钮（最小化 / 最大化 / 关闭）
 - WebRender / WebGL 硬件渲染（Maleoon 910）
 - H.264 VAAPI 真硬解（vacore / vadec）
+- 鼠标滚轮修复（wheel 事件走 continuous 路径）
+- **自包含符号实现**：`wheel_shim` 不依赖 libwayland 符号导出；指针尺寸每次启动跟随系统 DPI
 
 **核心原则：AppImage 原样运行，不解包、不改任何二进制字节。** 所有加速都靠
 `LD_PRELOAD` / `LD_LIBRARY_PATH` 层的垫片和子进程环境注入实现，零字节补丁。
@@ -17,7 +19,7 @@
 
 ```bash
 # 安装（需要 root）
-sudo dpkg -i firefox.appimage_160.0_arm64.deb
+sudo dpkg -i firefox.appimage_160.0-2_arm64.deb
 
 # 卸载
 sudo dpkg -r firefox.appimage
@@ -120,6 +122,15 @@ sudo gcc -shared -fPIC -O2 -o /opt/mozilla-firefox/lib/gfxtest_env_shim.so \
 各垫片源码目录自带有编译方式；`egl-huawei-v12` 需要 EGL 头文件与 `-DEGL_NO_X11`。
 具体见 `src/README`。
 
+`wheel_shim` 特殊：它用自带头 `src/wheel-shim/wayland_mini.h`（精确复刻原始 ABI），
+**不依赖任何 libwayland-dev 头文件**，直接用 gcc 编译即可，产出的 .so 没有 `wl_*`
+外部符号依赖，因此不会在重装系统后因 libwayland 符号差异崩溃：
+
+```bash
+cd /opt/mozilla-firefox/src/wheel-shim
+gcc -shared -fPIC -O2 -o /opt/mozilla-firefox/lib/wheel_shim.so wheel_shim.c -ldl
+```
+
 ## 6. 已知限制 / 设计取舍
 
 - **沙箱保持关闭**：私有华为 shim 和 GPU 设备节点与 Firefox 沙箱不兼容，启动器设置了
@@ -127,3 +138,13 @@ sudo gcc -shared -fPIC -O2 -o /opt/mozilla-firefox/lib/gfxtest_env_shim.so \
 - **只针对本机**：本包是为 Kirin 9000c / Maleoon 910 的特定软件栈定制的，换到别的机器
   （尤其非华为 GPU / 非 UOS20）垫片可能不适用甚至起反作用。
 - **滚轮倍率**：当前 `0.3`（见 `wheel_shim`），触摸板双指滚动不受影响。
+
+## 7. wheel_shim 与指针缩放
+
+`wheel_shim.so` 不引用任何 `wl_*` 外部符号：`wl_proxy_get_interface` 通过读 `wl_proxy` 首字段
+实现，`wl_pointer_interface` 通过比较接口名判断。ABI 与原版一致（12 字段 listener、
+calloc(120)、CONTINUOUS=2、WHEEL_SCALE=0.3），滚轮行为不变。源码在 `src/wheel-shim/`，
+自带 `wayland_mini.h`，直接用 gcc 即可重建，无需 libwayland-dev。
+
+指针尺寸由启动器每次启动时设置为 `24 × FF_DPI`（写入 GTK 标准键
+`org.gnome.desktop.interface cursor-size`），与界面缩放保持一致；2x DPI 下该键为 48。

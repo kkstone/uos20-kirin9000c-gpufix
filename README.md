@@ -7,7 +7,7 @@ Firefox 160 获得真硬件 WebGL 渲染、硬件画面合成与 H.264 VAAPI 硬
 |---|---|---|
 | **eglrun** | 2.0.2 | Chrome / Electron 通用 GPU 启动器（X11 + ANGLE/Vulkan 硬件合成 + VAAPI 修复） |
 | **uoshim-wayland-im** | 1.2 | 独立的 KWin 原生 Wayland 输入法桥（搜狗 / fcitx） |
-| **firefox.appimage** | 160.0 | 原厂 Firefox AppImage + 硬件加速垫片包 |
+| **firefox.appimage** | 160.0-2 | 原厂 Firefox AppImage + 硬件加速垫片包 |
 
 目标平台的关键约束：华为深度定制的图形栈（`libEGL` / `libGLESv2` / `libgbm` 被替换为
 `libGFX_hisi`，无标准 GLVND 符号；Maleoon 的 Vulkan 由私有 `libhvgr.so` 提供，缺若干标准扩展；
@@ -40,12 +40,21 @@ eglrun /opt/some-electron-app/app --flag value        # 启动 Electron 应用
 实现纯 Wayland 会话下的中文输入。以 `.desktop` 描述符方式注册（KWin 5.27 只认 desktop 文件，裸可执行路径会被忽略），
 CPIS uinput DBus 策略由 postinst 安装。与 eglrun 完全解耦。详见 [`uoshim/`](uoshim/)。
 
-### firefox.appimage 160.0
+### firefox.appimage 160.0-2
 
 原厂 Firefox AppImage **原样运行**，全部加速靠 `LD_PRELOAD` / `LD_LIBRARY_PATH` / 子进程环境注入实现：
 原生 Wayland + 自绘 CSD 三按钮、WebRender / WebGL 硬件渲染（Maleoon 910）、H.264 VAAPI 真硬解。
 详见 [`firefox/opt/mozilla-firefox/README.md`](firefox/opt/mozilla-firefox/README.md) 与
 [`RESEARCH.md`](firefox/opt/mozilla-firefox/RESEARCH.md)。
+
+`wheel_shim.so` 为自包含实现：`wl_proxy_get_interface` / `wl_pointer_interface` 由内置逻辑
+提供，不依赖 libwayland 的符号导出，可跨 libwayland 版本运行。ABI 与原版一致，滚轮行为不变。
+源码在 `src/wheel-shim/`，自带 `wayland_mini.h`，无需 libwayland-dev 即可重建。
+
+启动器每次启动读取系统缩放（`FF_DPI`），换算 `24 × DPI` 写入 GTK 标准键
+`org.gnome.desktop.interface cursor-size`（2x → 48px），指针与界面缩放始终一致。
+
+包内所有文件与目录属主均为 `root:root`。
 
 ## 目录结构
 
@@ -77,7 +86,7 @@ CPIS uinput DBus 策略由 postinst 安装。与 eglrun 完全解耦。详见 [`
 sudo dpkg -i releases/uoshim-wayland-im_1.2_arm64.deb
 sudo dpkg -i releases/eglrun_2.0.2_arm64.deb
 sudo dpkg -i releases/google-chrome-eglrun_157.0.8103.78-2_arm64.deb   # Chrome（大文件，需 git lfs pull）
-sudo dpkg -i releases/firefox.appimage_160.0_arm64-uoshim.deb          # Firefox（大文件，需 git lfs pull）
+sudo dpkg -i releases/firefox.appimage_160.0-2_arm64.deb               # Firefox（大文件，需 git lfs pull）
 ```
 
 克隆后先拉取 LFS 对象：`git lfs pull`。所有安装文件与目录属主为 `root:root`。
