@@ -1,6 +1,6 @@
 # UOS20 / Kirin 9000c / Maleoon 910 — 浏览器图形加速适配
 
-本仓库收录在 **UOS 20 / 飞腾鲲鹏 Kirin 9000c / Maleoon 910（aarch64）** 上，让 Chrome 157 与
+本仓库收录在 **UOS 20 / 华为海思 Kirin 9000c / Maleoon 910（aarch64）** 上，让 Chrome 157 与
 Firefox 160 获得真硬件 WebGL 渲染、硬件画面合成与 H.264 VAAPI 硬解的三个最终交付组件：
 
 | 组件 | 最终版本 | 作用 |
